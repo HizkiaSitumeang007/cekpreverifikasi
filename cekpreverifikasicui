@@ -4,14 +4,19 @@ from tkinter import messagebox
 import psycopg2
 import os
 from pathlib import Path
+import cv2
+import imutils.paths as paths
+import face_recognition
+import pickle
+import numpy as np
 
 def create_foto():
     conopen = psycopg2.connect(database=dbname,
-		user=username,
-		password=passwd,
-		host=srver,
-		port=port
-		)
+        user=username,
+        password=passwd,
+        host=srver,
+        port=port
+    )
     curopen = conopen.cursor()
     st = "Select r1eiiy, rtrim(h1emid) as emid, r1pict from hrmasr "
     st += "left join hrmas1 on h1eiiy = r1eiiy "
@@ -25,53 +30,71 @@ def create_foto():
         if nama != resopen[i][1]:
             no = 1
             nama = resopen[i][1]
-        else :
+        else:
             no += 1
-        # os.path.
-        if os.path.exists("foto/"+resopen[i][1]) == False:
+        if os.path.exists("Data/"+resopen[i][1]) == False:
             print(resopen[i][1])
-            os.mkdir("foto/"+resopen[i][1])
+            os.mkdir("Data/"+resopen[i][1])
         data = resopen[i][2]
-        out = None
-        out = open("foto/"+resopen[i][1]+"/"+resopen[i][1]+"_"+str(no)+".jpg", 'wb') 
+        out = open("Data/"+resopen[i][1]+"/"+resopen[i][1]+"_"+str(no)+".jpg", 'wb') 
         out.write(data) 
     conopen.close()
 
-photo = None
+def process_faces():
+    dataset = "D:/ExPy/finalKamisRizkal/Data"  # Lokasi folder dataset gambar
+    pickle_file = "D:/ExPy/finalKamisRizkal/training/encoding1.pickle"  
+    
+    if os.path.exists(pickle_file):
+        with open(pickle_file, "rb") as f:
+            data = pickle.load(f)
+        knownEncodings = data["encodings"]
+        knownNames = data["names"]
+        print("[INFO] File pickle ditemukan, memuat data lama...")
+    else:
+        knownEncodings = []
+        knownNames = []
+        print("[INFO] File pickle belum ada, membuat data baru...")
+    
+    imagePaths = list(paths.list_images(dataset))
+    newImagePaths = []
+    
+    for imagePath in imagePaths:
+        name = imagePath.split(os.path.sep)[-2]  # Nama folder = label
+        if name not in knownNames:  
+            newImagePaths.append(imagePath)  # Hanya tambahkan gambar dari folder baru
+    
+    print(f"[INFO] Menemukan {len(newImagePaths)} gambar baru untuk diproses.")
+    
+    for (i, imagePath) in enumerate(newImagePaths):
+        print(f"[INFO] Memproses gambar {i+1}/{len(newImagePaths)}: {imagePath}")
+        name = imagePath.split(os.path.sep)[-2]  
+        image = cv2.imread(imagePath)
+        rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    
+        boxes = face_recognition.face_locations(rgb, model="hog")
+        encodings = face_recognition.face_encodings(rgb, boxes)
+    
+        for encoding in encodings:
+            knownEncodings.append(encoding)
+            knownNames.append(name)
+    
+    print("[INFO] Menyimpan data terbaru ke file pickle...")
+    with open(pickle_file, "wb") as f:
+        pickle.dump({"encodings": knownEncodings, "names": knownNames}, f)
+    
+    print("[INFO] Update file pickle selesai!")
+
 dbname = "backupabsen"
 username="postgres"
 passwd="admin"
 srver="localhost"
 port="5432" 
 
-lebar=0
-
-image_id = None  # default value at start (to create global variable)
-
-
 window = tk.Tk()
 screnwidth = 600 
-# window.winfo_screenwidth()
-screnwidth2 = 0
 screnheight = 480
-# window.winfo_screenheight()-28
-newx = 0
-newy = 0
-window.geometry(f"{screnwidth}x{screnheight}+{newx}+{newy}")
+window.geometry(f"{screnwidth}x{screnheight}+0+0")
 window.title('PRE VERIFIKASI ABSENSI')
-
-tgh = (screnwidth//2) - 55
-# window.wm_attributes('-type', 'splash')
-# title_bar = tk.Frame(window, bg="gray", relief="groove", bd=2)
-# title_bar.pack(fill=tk.X)
-
-# title_label = tk.Label(title_bar, text="ABSENSI", font=fontttl, justify="center",  bg="gray", fg="white")
-# title_label.pack(side=tk.LEFT, padx=tgh)
-
-# close_button = tk.Button(title_bar, text="X", command=close_window, bg="gray", fg="white", relief="flat")
-# close_button.pack(side=tk.RIGHT, padx=2)
-
-# title_bar.bind('<B1-Motion>', move_window)
 window.resizable(0,0)
 
 for i in range(0,19):
@@ -80,8 +103,11 @@ for i in range(0,19):
 for i in range(0,19):
     window.rowconfigure(i,minsize=int(screnheight/25))
 
-btn = tk.Button(window, text="Prepared", command=create_foto)
-btn.grid(row=1, column=1, columnspan=3, padx=15, sticky="w")
+btn_foto = tk.Button(window, text="Ambil Foto dari Database", command=create_foto)
+btn_foto.grid(row=1, column=1, columnspan=3, padx=15, sticky="w")
+
+btn_recognition = tk.Button(window, text="Proses Pengenalan Wajah", command=process_faces)
+btn_recognition.grid(row=2, column=1, columnspan=3, padx=15, sticky="w")
 
 if os.path.exists("foto") == False:
     print("Tidak ada")
